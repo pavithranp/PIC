@@ -36,6 +36,8 @@ def define_d(input_nc=3, ndf=64, img_f=512, layers=6, norm='none', activation='L
 #############################################################################################################
 # Network structure
 #############################################################################################################
+
+
 class ResEncoder(nn.Module):
     """
     ResNet Encoder Network
@@ -324,3 +326,24 @@ class PatchDiscriminator(nn.Module):
     def forward(self, x):
         out = self.model(x)
         return out
+
+
+class ExampleGuidedAttn(nn.Module):
+
+    def __init__(self):
+        super(ExampleGuidedAttn, self).__init__()
+        self.conv1x1 = nn.ModuleList()
+        in_channels = [32,64,128,128,128]
+        for x in in_channels:
+            self.conv1x1.append(nn.Conv2d(in_channels=x, out_channels=1, kernel_size=1))
+
+
+    def forward(self,ref_f,f):
+        fused_feature = []
+        for i,(f_,ref_) in enumerate(zip(f,ref_f)):
+            fq = self.conv1x1[i](f_)
+            out1 = nn.functional.softmax(fq*torch.transpose(fq,2,3),dim=0)
+            example_guided_flow = torch.matmul(ref_.permute(2,3,1,0),out1.permute(2,3,0,1)).permute(3,2,1,0)
+            self_attention = torch.matmul(f_.permute(2,3,1,0),out1.permute(2,3,0,1)).permute(3,2,1,0)
+            fused_feature.append(torch.cat([example_guided_flow,self_attention],dim=0))
+        return fused_feature

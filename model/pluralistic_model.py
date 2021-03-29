@@ -35,12 +35,15 @@ class Pluralistic(BaseModel):
         # define the inpainting model
         self.net_E = network.define_e(ngf=32, z_nc=128, img_f=128, layers=5, norm='none', activation='LeakyReLU',
                                       init_type='orthogonal', gpu_ids=opt.gpu_ids)
+        self.ref_net_E = network.define_e(ngf=32, z_nc=128, img_f=128, layers=5, norm='none', activation='LeakyReLU',
+                                      init_type='orthogonal', gpu_ids=opt.gpu_ids)
         self.net_G = network.define_g(ngf=32, z_nc=128, img_f=128, L=0, layers=5, output_scale=opt.output_scale,
                                       norm='instance', activation='LeakyReLU', init_type='orthogonal', gpu_ids=opt.gpu_ids)
         # define the discriminator model
         self.net_D = network.define_d(ndf=32, img_f=128, layers=5, model_type='ResDis', init_type='orthogonal', gpu_ids=opt.gpu_ids)
         self.net_D_rec = network.define_d(ndf=32, img_f=128, layers=5, model_type='ResDis', init_type='orthogonal', gpu_ids=opt.gpu_ids)
 
+        self.attention = network.ExampleGuidedAttn()
         if self.isTrain:
             # define the loss functions
             self.GANloss = external_function.GANLoss(opt.gan_mode)
@@ -62,14 +65,17 @@ class Pluralistic(BaseModel):
         self.input = input
         self.image_paths = self.input['img_path']
         self.img = input['img']
+        self.ref = input['ref']
         self.mask = input['mask']
 
         if len(self.gpu_ids) > 0:
-            self.img = self.img.cuda(self.gpu_ids[0], async=True)
-            self.mask = self.mask.cuda(self.gpu_ids[0], async=True)
+            self.img = self.img.cuda(self.gpu_ids[0])
+            self.mask = self.mask.cuda(self.gpu_ids[0])
 
         # get I_m and I_c for image with mask and complement regions for training
         self.img_truth = self.img * 2 - 1
+        self.ref_m = self.mask * self.ref
+        self.ref_c = (1 - self.mask) * self.ref
         self.img_m = self.mask * self.img_truth
         self.img_c = (1 - self.mask) * self.img_truth
 
@@ -138,11 +144,12 @@ class Pluralistic(BaseModel):
     def forward(self):
         """Run forward processing to get the inputs"""
         # encoder process
+        ref_distributions, ref_f = self.ref_net_E(self.ref_m,self.ref_c)
         distributions, f = self.net_E(self.img_m, self.img_c)
         p_distribution, q_distribution, self.kl_rec, self.kl_g = self.get_distribution(distributions)
-
+        fused_features = self.attention(ref_f,f)
         # decoder process
-        z, f_m, f_e, mask = self.get_G_inputs(p_distribution, q_distribution, f)
+        z, f_m, f_e, mask = self.get_G_inputs(p_distribution, q_distribution, fused_features)
         results, attn = self.net_G(z, f_m, f_e, mask)
         self.img_rec = []
         self.img_g = []
@@ -165,7 +172,7 @@ class Pluralistic(BaseModel):
         # gradient penalty for wgan-gp
         if self.opt.gan_mode == 'wgangp':
             gradient_penalty, gradients = external_function.cal_gradient_penalty(netD, real, fake.detach())
-            D_loss +=gradient_penalty
+            D_loss += gradient_penalty
 
         D_loss.backward()
 

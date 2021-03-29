@@ -18,9 +18,10 @@ class CreateDataset(data.Dataset):
     def __getitem__(self, index):
         # load image
         img, img_path = self.load_img(index)
+        ref, ref_path = self.load_img(index+50)
         # load mask
         mask = self.load_mask(img, index)
-        return {'img': img, 'img_path': img_path, 'mask': mask}
+        return {'img': img, 'img_path': img_path, 'mask': mask, 'ref': ref, 'ref_path': ref_path}
 
     def __len__(self):
         return self.img_size
