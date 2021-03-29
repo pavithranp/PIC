@@ -3,6 +3,7 @@ from .base_model import BaseModel
 from . import network, base_function, external_function
 from util import task
 import itertools
+import lpips
 
 
 class Pluralistic(BaseModel):
@@ -33,6 +34,8 @@ class Pluralistic(BaseModel):
         self.distribution = []
 
         # define the inpainting model
+
+        self.loss_fn_alex = lpips.LPIPS(net='alex')
         self.net_E = network.define_e(ngf=32, z_nc=128, img_f=128, layers=5, norm='none', activation='LeakyReLU',
                                       init_type='orthogonal', gpu_ids=opt.gpu_ids)
         self.ref_net_E = network.define_e(ngf=32, z_nc=128, img_f=128, layers=5, norm='none', activation='LeakyReLU',
@@ -187,6 +190,10 @@ class Pluralistic(BaseModel):
     def backward_G(self):
         """Calculate training loss for the generator"""
 
+        # perceptual loss
+        pl1 = self.loss_fn_alex(self.img_out, self.img)
+        pl2 = self.loss_fn_alex(self.img_out, self.ref)
+        self.perceptual = pl1+pl2
         # encoder kl loss
         self.loss_kl_rec = self.kl_rec.mean() * self.opt.lambda_kl * self.opt.output_scale
         self.loss_kl_g = self.kl_g.mean() * self.opt.lambda_kl * self.opt.output_scale
@@ -224,7 +231,7 @@ class Pluralistic(BaseModel):
         for name in self.loss_names:
             if name != 'img_d' and name != 'img_d_rec':
                 total_loss += getattr(self, "loss_" + name)
-
+        total_loss +=self.perceptual
         total_loss.backward()
 
     def optimize_parameters(self):
