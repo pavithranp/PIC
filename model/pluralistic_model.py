@@ -231,7 +231,7 @@ class Pluralistic(BaseModel):
         for name in self.loss_names:
             if name != 'img_d' and name != 'img_d_rec':
                 total_loss += getattr(self, "loss_" + name)
-        total_loss +=self.perceptual
+        total_loss +=20*self.perceptual.squeeze()
         total_loss.backward()
 
     def optimize_parameters(self):
