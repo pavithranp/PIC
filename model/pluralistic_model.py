@@ -77,8 +77,9 @@ class Pluralistic(BaseModel):
 
         # get I_m and I_c for image with mask and complement regions for training
         self.img_truth = self.img * 2 - 1
-        self.ref_m = self.mask * self.ref
-        self.ref_c = (1 - self.mask) * self.ref
+        self.ref_truth = self.ref * 2 - 1
+        self.ref_m = (1 - self.mask) * self.ref
+        self.ref_c = self.mask * self.ref
         self.img_m = self.mask * self.img_truth
         self.img_c = (1 - self.mask) * self.img_truth
 
@@ -91,11 +92,14 @@ class Pluralistic(BaseModel):
         # save the groundtruth and masked image
         self.save_results(self.img_truth, data_name='truth')
         self.save_results(self.img_m, data_name='mask')
+        self.save_results(self.ref_truth, data_name='ref_truth')
 
         # encoder process
         distribution, f = self.net_E(self.img_m)
+        distribution, ref_f = self.ref_net_E(self.ref_m)
+        fused_features = self.attention(ref_f, f)
         q_distribution = torch.distributions.Normal(distribution[-1][0], distribution[-1][1])
-        scale_mask = task.scale_img(self.mask, size=[f[2].size(2), f[2].size(3)])
+        scale_mask = task.scale_img(self.mask, size=[fused_features[2].size(2), fused_features[2].size(3)])
 
         # decoder process
         for i in range(self.opt.nsampling):
