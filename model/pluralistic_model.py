@@ -78,8 +78,8 @@ class Pluralistic(BaseModel):
         # get I_m and I_c for image with mask and complement regions for training
         self.img_truth = self.img * 2 - 1
         self.ref_truth = self.ref * 2 - 1
-        self.ref_m = (1 - self.mask) * self.ref
-        self.ref_c = self.mask * self.ref
+        self.ref_m = (1 - self.mask) * self.ref_truth
+        self.ref_c = self.mask * self.ref_truth
         self.img_m = self.mask * self.img_truth
         self.img_c = (1 - self.mask) * self.img_truth
 
