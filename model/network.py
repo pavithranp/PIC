@@ -207,7 +207,7 @@ class ResGenerator(nn.Module):
              f = generator(f)
 
         # the features come from mask regions and valid regions, we directly add them together
-        out = f_m + f
+        out = f_m #+ f
         results= []
         attn = 0
         for i in range(self.layers):
@@ -343,7 +343,7 @@ class ExampleGuidedAttn(nn.Module):
         for i,(f_,ref_) in enumerate(zip(f,ref_f)):
             fq = self.conv1x1[i](f_)
             out1 = nn.functional.softmax(fq*torch.transpose(fq,2,3),dim=0)
-            example_guided_flow = torch.matmul(ref_.permute(2,3,1,0),out1.permute(2,3,0,1)).permute(3,2,1,0)
-            self_attention = torch.matmul(f_.permute(2,3,1,0),out1.permute(2,3,0,1)).permute(3,2,1,0)
-            fused_feature.append(torch.cat([example_guided_flow,self_attention],dim=0))
+            example_guided_flow = ref_*out1
+            self_attention = f_*out1
+            fused_feature.append(example_guided_flow + self_attention)
         return fused_feature

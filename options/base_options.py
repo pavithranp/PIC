@@ -14,7 +14,7 @@ class BaseOptions():
         # base define
         parser.add_argument('--name', type=str, default='experiment_name', help='name of the experiment.')
         parser.add_argument('--model', type=str, default='pluralistic', help='name of the model type. [pluralistic]')
-        parser.add_argument('--mask_type', type=int, default=[1, 2],
+        parser.add_argument('--mask_type', type=int, default=[0,1],
                             help='mask type, 0: center mask, 1:random regular mask, '
                             '2: random irregular mask. 3: external irregular mask. [0],[1,2],[1,2,3]')
         parser.add_argument('--checkpoints_dir', type=str, default='./checkpoints', help='models are save here')
@@ -30,14 +30,14 @@ class BaseOptions():
         parser.add_argument('--no_flip', action='store_true', help='if specified, do not flip the image for data augmentation')
         parser.add_argument('--no_rotation', action='store_true', help='if specified, do not rotation for data augmentation')
         parser.add_argument('--no_augment', action='store_true', help='if specified, do not augment the image for data augmentation')
-        parser.add_argument('--batchSize', type=int, default=1, help='input batch size')
+        parser.add_argument('--batchSize', type=int, default=2, help='input batch size')
         parser.add_argument('--nThreads', type=int, default=0, help='# threads for loading data')
         parser.add_argument('--no_shuffle', action='store_true',help='if true, takes images serial')
 
         # display parameter define
         parser.add_argument('--display_winsize', type=int, default=256, help='display window size')
         parser.add_argument('--display_id', type=int, default=1, help='display id of the web')
-        parser.add_argument('--display_port', type=int, default=8097, help='visidom port of the web display')
+        parser.add_argument('--display_port', type=int, default=18097, help='visidom port of the web display')
         parser.add_argument('--display_single_pane_ncols', type=int, default=0, help='if positive, display all images in a single visidom web panel')
 
         return parser

@@ -2,8 +2,11 @@ import torch
 from .base_model import BaseModel
 from . import network, base_function, external_function
 from util import task
+from util.task import gram_matrix
 import itertools
 import lpips
+from torchvision import transforms
+from vgg import Vgg16
 
 
 class Pluralistic(BaseModel):
@@ -27,15 +30,16 @@ class Pluralistic(BaseModel):
         """Initial the pluralistic model"""
         BaseModel.__init__(self, opt)
 
-        self.loss_names = ['kl_rec', 'kl_g', 'app_rec', 'app_g', 'ad_g', 'img_d', 'ad_rec', 'img_d_rec']
+        self.loss_names = {'kl_rec':1, 'kl_g':1, 'app_rec':1, 'app_g':0.5, 'ad_g':1, 'img_d':1, 'ad_rec':1, 'img_d_rec':1,'perceptual':1,'style':250,'content':1}
         self.visual_names = ['img_m', 'img_c', 'img_truth', 'img_out', 'img_g', 'img_rec','ref']
         self.value_names = ['u_m', 'sigma_m', 'u_post', 'sigma_post', 'u_prior', 'sigma_prior']
         self.model_names = ['E', 'G', 'D', 'D_rec']
         self.distribution = []
-
+        self.content_weight = 0.5
+        self.style_weight = 0.5
         # define the inpainting model
 
-        self.loss_fn_alex = lpips.LPIPS(net='alex')
+        self.loss_fn_alex = lpips.LPIPS(net='vgg')
         self.net_E = network.define_e(ngf=32, z_nc=128, img_f=128, layers=5, norm='none', activation='LeakyReLU',
                                       init_type='orthogonal', gpu_ids=opt.gpu_ids)
         self.ref_net_E = network.define_e(ngf=32, z_nc=128, img_f=128, layers=5, norm='none', activation='LeakyReLU',
@@ -45,7 +49,11 @@ class Pluralistic(BaseModel):
         # define the discriminator model
         self.net_D = network.define_d(ndf=32, img_f=128, layers=5, model_type='ResDis', init_type='orthogonal', gpu_ids=opt.gpu_ids)
         self.net_D_rec = network.define_d(ndf=32, img_f=128, layers=5, model_type='ResDis', init_type='orthogonal', gpu_ids=opt.gpu_ids)
-
+        self.vgg = Vgg16(requires_grad=False).to('cuda')
+        self.style_transform = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Lambda(lambda x: x.mul(255))
+        ])
         self.attention = network.ExampleGuidedAttn()
         if self.isTrain:
             # define the loss functions
@@ -194,10 +202,24 @@ class Pluralistic(BaseModel):
     def backward_G(self):
         """Calculate training loss for the generator"""
 
+        # contextual and style loss
+        features_style = self.vgg(self.ref.cuda())
+        gram_style = [gram_matrix(y) for y in features_style]
+
+        features_y = self.vgg(self.img_g[-1].cuda())
+        features_x = self.vgg(self.img_truth.cuda())
+
+        self.loss_content = self.L2loss(features_y.relu2_2, features_x.relu2_2).to('cpu')
+
+        self.loss_style = 0
+        for ft_y, gm_s in zip(features_y, gram_style):
+            gm_y = gram_matrix(ft_y)
+            self.loss_style += self.L2loss(gm_y, gm_s[:self.ref.shape[0], :, :]).to('cpu')
+
         # perceptual loss
-        pl1 = self.loss_fn_alex(self.img_out, self.img)
-        pl2 = self.loss_fn_alex(self.img_out, self.ref)
-        self.perceptual = pl1+pl2
+        pl1 = self.loss_fn_alex(self.img_g[-1], self.img)
+        pl2 = self.loss_fn_alex(self.img_g[-1], self.ref)
+        self.loss_perceptual = (pl1+pl2).mean()
         # encoder kl loss
         self.loss_kl_rec = self.kl_rec.mean() * self.opt.lambda_kl * self.opt.output_scale
         self.loss_kl_g = self.kl_g.mean() * self.opt.lambda_kl * self.opt.output_scale
@@ -232,10 +254,9 @@ class Pluralistic(BaseModel):
 
         total_loss = 0
 
-        for name in self.loss_names:
+        for name in self.loss_names.keys():
             if name != 'img_d' and name != 'img_d_rec':
-                total_loss += getattr(self, "loss_" + name)
-        total_loss +=10*self.perceptual.squeeze()
+                total_loss += self.loss_names[name]*getattr(self, "loss_" + name)
         total_loss.backward()
 
     def optimize_parameters(self):
